@@ -1695,6 +1695,15 @@ typedef struct AVFormatContext {
      * - decoding: set by user
      */
     int max_probe_packets;
+
+    /**
+     * Maximum buffering duration for interleaving sparse streams.
+     *
+     * @see max_interleave_delta
+     *
+     * Applies only to subtitle and data streams.
+     */
+    int64_t max_sparse_interleave_delta;
 } AVFormatContext;
 
 /**
