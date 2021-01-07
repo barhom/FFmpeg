@@ -157,6 +157,9 @@ typedef struct DASHContext {
     int is_init_section_common_audio;
     int is_init_section_common_subtitle;
 
+    /* Decryption key to pass to mp4 decoder */
+    char *decryption_key;
+
 } DASHContext;
 
 static int ishttp(char *url)
@@ -1385,7 +1388,7 @@ static int64_t calc_cur_seg_no(AVFormatContext *s, struct representation *pls)
             num = pls->first_seq_no;
         } else if (pls->n_timelines) {
             av_log(s, AV_LOG_TRACE, "in n_timelines mode\n");
-            start_time_offset = get_segment_start_time_based_on_timeline(pls, 0xFFFFFFFF) - 60 * pls->fragment_timescale; // 60 seconds before end
+            start_time_offset = get_segment_start_time_based_on_timeline(pls, 0xFFFFFFFF) - 10 * pls->fragment_timescale; // 10 seconds before end
             num = calc_next_seg_no_from_timelines(pls, start_time_offset);
             if (num == -1)
                 num = pls->first_seq_no;
@@ -1927,6 +1930,10 @@ static int reopen_demux_for_component(AVFormatContext *s, struct representation 
     pls->ctx->pb = &pls->pb;
     pls->ctx->io_open  = nested_io_open;
 
+    // pass decryption_key option to decoder
+    if (c->decryption_key)
+        av_dict_set(&in_fmt_opts, "decryption_key", c->decryption_key, 0);
+
     // provide additional information from mpd if available
     ret = avformat_open_input(&pls->ctx, "", in_fmt, &in_fmt_opts); //pls->init_section->url
     av_dict_free(&in_fmt_opts);
@@ -2383,6 +2390,8 @@ static int dash_probe(const AVProbeData *p)
 #define OFFSET(x) offsetof(DASHContext, x)
 #define FLAGS AV_OPT_FLAG_DECODING_PARAM
 static const AVOption dash_options[] = {
+    {"decryption_key", "The media decryption key (hex)",
+        OFFSET(decryption_key), AV_OPT_TYPE_STRING, .flags = AV_OPT_FLAG_DECODING_PARAM },
     {"allowed_extensions", "List of file extensions that dash is allowed to access",
         OFFSET(allowed_extensions), AV_OPT_TYPE_STRING,
         {.str = "aac,m4a,m4s,m4v,mov,mp4,webm,ts"},
