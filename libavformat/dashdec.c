@@ -107,6 +107,7 @@ struct representation {
     int64_t cur_seg_offset;
     int64_t cur_seg_size;
     struct fragment *cur_seg;
+    int64_t last_load_time;
 
     /* Currently active Media Initialization Section */
     struct fragment *init_section;
@@ -1411,6 +1412,9 @@ static int64_t calc_cur_seg_no(AVFormatContext *s, struct representation *pls)
     } else {
         num = pls->first_seq_no;
     }
+
+    if (pls)
+        pls->last_load_time = get_current_time_in_sec();
     return num;
 }
 
@@ -1489,6 +1493,7 @@ static void move_segments(struct representation *rep_src, struct representation 
 static int refresh_manifest(AVFormatContext *s)
 {
     int ret = 0, i;
+    int64_t cur_time = get_current_time_in_sec();
     DASHContext *c = s->priv_data;
     // save current context
     int n_videos = c->n_videos;
@@ -1532,6 +1537,11 @@ static int refresh_manifest(AVFormatContext *s)
     for (i = 0; i < n_videos; i++) {
         struct representation *cur_video = videos[i];
         struct representation *ccur_video = c->videos[i];
+        if (cur_video)
+            cur_video->last_load_time = cur_time;
+        if (ccur_video)
+            ccur_video->last_load_time = cur_time;
+
         if (cur_video->timelines) {
             // calc current time
             int64_t currentTime = get_segment_start_time_based_on_timeline(cur_video, cur_video->cur_seq_no) / cur_video->fragment_timescale;
@@ -1548,6 +1558,11 @@ static int refresh_manifest(AVFormatContext *s)
     for (i = 0; i < n_audios; i++) {
         struct representation *cur_audio = audios[i];
         struct representation *ccur_audio = c->audios[i];
+        if (cur_audio)
+            cur_audio->last_load_time = cur_time;
+        if (ccur_audio)
+            ccur_audio->last_load_time = cur_time;
+
         if (cur_audio->timelines) {
             // calc current time
             int64_t currentTime = get_segment_start_time_based_on_timeline(cur_audio, cur_audio->cur_seq_no) / cur_audio->fragment_timescale;
@@ -1664,6 +1679,8 @@ static struct fragment *get_current_fragment(struct representation *pls)
         av_free(tmpfilename);
         seg->size = -1;
     }
+    if (pls)
+        pls->last_load_time = get_current_time_in_sec();
 
     return seg;
 }
@@ -1779,6 +1796,10 @@ static int read_data(void *opaque, uint8_t *buf, int buf_size)
     DASHContext *c = v->parent->priv_data;
 
 restart:
+    if (c->is_live && v->fragment_duration != 0 && v->fragment_timescale != 0)
+        if (get_current_time_in_sec() - v->last_load_time < (v->fragment_duration / v->fragment_timescale)) {
+            goto restart;
+        }
     if (!v->input) {
         free_fragment(&v->cur_seg);
         v->cur_seg = get_current_fragment(v);
